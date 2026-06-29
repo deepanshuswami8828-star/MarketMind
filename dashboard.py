@@ -615,14 +615,18 @@ else:
             st.markdown("---")
             
             # --- MAIN AREA SECTION 3: BACKTEST COMPARISON ---
-            st.subheader("🧪 Historical Backtest Performance (Out-Of-Sample Walk-Forward)")
+            st.subheader("🧪 Historical Backtest Performance & Strategy Comparison (OOS Walk-Forward)")
+            
+            # Prominent warning banner
+            st.warning("⚠️ **Warning**: High backtest numbers do not guarantee live profit. Overfitting is real. Paper-test for weeks before any real money. Not financial advice.")
             
             # Clean dataset for backtest
             df_backtest = features.build_dataset(df_raw, horizon=4, threshold=0.01)
             
             # Run walk-forward testing to generate out-of-sample signals
-            with st.spinner("Simulating walk-forward backtest..."):
+            with st.spinner("Simulating walk-forward backtests..."):
                 try:
+                    # 1. Run ML Model Walk-Forward to get OOS dataframe
                     oos_df = strategy.walk_forward(
                         df_backtest,
                         init_train_frac=0.5,
@@ -630,11 +634,23 @@ else:
                         prob_threshold=prob_threshold
                     )
                     
-                    trades_df, summary = strategy.backtest(
+                    # Backtest ML Model
+                    trades_df, summary_ml = strategy.backtest(
                         oos_df, 
                         cost_per_trade=cost_per_trade,
                         atr_stop_mult=atr_stop_mult,
                         atr_target_mult=atr_target_mult
+                    )
+                    
+                    # 2. Evaluate all 5 strategies on the exact same OOS index using evaluate_all_strategies
+                    eval_results = strategy.evaluate_all_strategies(
+                        df_raw=df_raw,
+                        oos_df=oos_df,
+                        cost_per_trade=cost_per_trade,
+                        atr_stop_mult=atr_stop_mult,
+                        atr_target_mult=atr_target_mult,
+                        max_hold=8,
+                        ml_summary=summary_ml
                     )
                     
                     # Compute Buy and Hold return
@@ -642,31 +658,55 @@ else:
                     bh_exit = oos_df['close'].iloc[-1]
                     bh_return = (bh_exit * (1 - cost_per_trade)) / (bh_entry * (1 + cost_per_trade)) - 1.0
                     
-                    # Print results columns
-                    col_met1, col_met2, col_met3, col_met4 = st.columns(4)
-                    with col_met1:
-                        st.metric("Strategy Total Return", f"{summary['total_return']*100:.2f}%")
-                    with col_met2:
-                        st.metric("Buy-and-Hold Return", f"{bh_return*100:.2f}%")
-                    with col_met3:
-                        st.metric("Total Trades Executed", f"{summary['n_trades']}")
-                    with col_met4:
-                        st.metric("Trade Win Rate", f"{summary['win_rate']*100:.1f}%")
+                    # Build comparison rows
+                    comparison_rows = []
+                    for name, s in eval_results.items():
+                        comparison_rows.append({
+                            'Strategy': name,
+                            'Number of Trades': s['n_trades'],
+                            'Win Rate %': f"{s['win_rate'] * 100:.2f}%",
+                            'Total Return %': f"{s['total_return'] * 100:.2f}%",
+                            'Buy-and-Hold Return %': f"{bh_return * 100:.2f}%",
+                            # Raw values for coloring and picking the best
+                            'raw_total_return': s['total_return'],
+                            'raw_bh_return': bh_return
+                        })
                         
-                    # Show Trades Log DataFrame
+                    df_comp = pd.DataFrame(comparison_rows)
+                    
+                    # Styler function to highlight rows: green if beats B&H, red if not
+                    def style_beats_bh(row):
+                        if row['raw_total_return'] > row['raw_bh_return']:
+                            return ['background-color: #113824; color: #ffffff'] * len(row)
+                        return ['background-color: #3b1111; color: #ffffff'] * len(row)
+                        
+                    styled_comp = df_comp[['Strategy', 'Number of Trades', 'Win Rate %', 'Total Return %', 'Buy-and-Hold Return %']].style.apply(style_beats_bh, axis=1)
+                    
+                    # Display the styled comparison table
+                    st.markdown("**Strategy Comparison Table (Out-Of-Sample Walk-Forward):**")
+                    st.dataframe(styled_comp, use_container_width=True)
+                    st.markdown("*Beating buy-and-hold after costs is the real test, NOT accuracy.*")
+                    
+                    # Add "Best for this stock" label
+                    best_strat = max(comparison_rows, key=lambda x: x['raw_total_return'])
+                    st.success(
+                        f"🏆 **Best Strategy for {symbol}**: **{best_strat['Strategy']}** with a Total Return of **{best_strat['Total Return %']}** "
+                        f"(compared to Buy-and-Hold of **{best_strat['Buy-and-Hold Return %']}**)."
+                    )
+                    
+                    # Show Trades Log DataFrame for ML Model
                     if not trades_df.empty:
-                        with st.expander("🔍 View Complete Backtest Trade Log"):
-                            # Format columns for nice display
+                        with st.expander("🔍 View Complete ML Model Backtest Trade Log"):
                             display_trades = trades_df.copy()
                             display_trades['net_return'] = display_trades['net_return'].apply(lambda x: f"{x*100:.2f}%")
                             display_trades['entry_price'] = display_trades['entry_price'].round(2)
                             display_trades['exit_price'] = display_trades['exit_price'].round(2)
                             st.dataframe(display_trades, use_container_width=True)
                     else:
-                        st.info("No trades were triggered during the out-of-sample validation period.")
+                        st.info("No trades were triggered for the ML Model during the out-of-sample period.")
                         
                 except Exception as e:
-                    st.warning(f"Could not complete walk-forward simulation: {e}")
+                    st.warning(f"Could not complete strategy comparison: {e}")
             
             st.markdown("---")
             
