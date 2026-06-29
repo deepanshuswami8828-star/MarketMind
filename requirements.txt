@@ -1,0 +1,10 @@
+pandas
+numpy
+scikit-learn
+yfinance
+python-telegram-bot
+kiteconnect
+streamlit
+plotly
+SpeechRecognition
+pyttsx3
