@@ -168,9 +168,20 @@ else:
             # Compute trade blueprint levels
             current_close = latest_bar['close']
             current_atr = latest_bar['atr_14']
-            suggested_entry = current_close
-            stop_loss = suggested_entry - atr_stop_mult * current_atr
-            target = suggested_entry + atr_target_mult * current_atr
+            
+            # Formulate levels and strings based on signal
+            if is_long:
+                suggested_entry = current_close
+                stop_loss = suggested_entry - atr_stop_mult * current_atr
+                target = suggested_entry + atr_target_mult * current_atr
+                
+                entry_str = f"{suggested_entry:.2f}"
+                stop_str = f"{stop_loss:.2f}"
+                target_str = f"{target:.2f}"
+            else:
+                entry_str = "-"
+                stop_str = "-"
+                target_str = "-"
             
             # --- MAIN AREA SECTION 1: SIGNAL KEYCARDS ---
             st.subheader(f"📊 Current Signal Status for {symbol} (As of {latest_time})")
@@ -200,7 +211,7 @@ else:
                 st.markdown(f"""
                 <div class="metric-card">
                     <h3>Suggested Entry</h3>
-                    <p>{suggested_entry:.2f if is_long else '-'}</p>
+                    <p>{entry_str}</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -208,7 +219,7 @@ else:
                 st.markdown(f"""
                 <div class="metric-card">
                     <h3>Stop-Loss (ATR)</h3>
-                    <p>{stop_loss:.2f if is_long else '-'}</p>
+                    <p>{stop_str}</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -216,7 +227,7 @@ else:
                 st.markdown(f"""
                 <div class="metric-card">
                     <h3>Profit Target</h3>
-                    <p>{target:.2f if is_long else '-'}</p>
+                    <p>{target_str}</p>
                 </div>
                 """, unsafe_allow_html=True)
             
