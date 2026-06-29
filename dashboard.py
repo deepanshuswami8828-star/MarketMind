@@ -11,6 +11,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
+import sys
 
 import data_loader
 import features
@@ -26,51 +27,37 @@ st.set_page_config(
 # Sleek CSS styling to inject custom visual accents
 st.markdown("""
 <style>
-    .stApp {
-        background: #0f172a;
-    }
     .reportview-container {
-        background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+        background: #0e1117;
     }
     .metric-card {
-        border-radius: 14px;
-        padding: 18px 16px;
-        background-color: #111827;
-        border: 1px solid #334155;
-        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.25);
+        border-radius: 12px;
+        padding: 20px;
+        background-color: #1e222b;
+        border: 1px solid #2e323b;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         text-align: center;
-        min-height: 120px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
     }
     .metric-card h3 {
-        margin: 0 0 8px 0;
-        font-size: 12px;
-        color: #94a3b8;
+        margin: 0;
+        font-size: 14px;
+        color: #8a99ad;
         text-transform: uppercase;
         letter-spacing: 1px;
     }
     .metric-card p {
-        margin: 0;
-        font-size: 24px;
+        margin: 10px 0 0 0;
+        font-size: 28px;
         font-weight: 700;
-        color: #f8fafc;
+        color: #ffffff;
     }
     .signal-long {
-        background-color: #11251c;
-        border: 1.5px solid #22c55e !important;
+        background: linear-gradient(135deg, #113824 0%, #1e222b 100%);
+        border: 1.5px solid #28a745 !important;
     }
     .signal-wait {
-        background-color: #241c0d;
-        border: 1.5px solid #f59e0b !important;
-    }
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-    }
-    .stSidebar .block-container {
-        padding-top: 1.25rem;
+        background: linear-gradient(135deg, #3d331d 0%, #1e222b 100%);
+        border: 1.5px solid #ffc107 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -81,16 +68,23 @@ st.markdown("""
 def get_historical_data(source_type, identifier):
     """
     Loads historical daily OHLCV data based on source type.
+    Includes robust error-handling to prevent dashboard crashes.
     """
-    if source_type == "CSV File":
-        if not identifier or not os.path.exists(identifier):
-            return None
-        return data_loader.load_csv(identifier)
-    else:
-        # yfinance
-        if not identifier:
-            return None
-        return data_loader.load_yfinance(identifier, period="2y", interval="1d")
+    try:
+        if source_type == "CSV File":
+            if not identifier or not os.path.exists(identifier):
+                return None
+            return data_loader.load_csv(identifier)
+        else:
+            # yfinance
+            if not identifier:
+                return None
+            return data_loader.load_yfinance(identifier, period="2y", interval="1d")
+    except Exception as e:
+        # Gracefully catch all errors (like connection loss or invalid symbols)
+        # print error details to stderr for diagnostics and return None
+        print(f"Error loading historical data for '{identifier}': {e}", file=sys.stderr)
+        return None
 
 
 @st.cache_resource(ttl=3600)  # Cache trained models for 1 hour
@@ -109,47 +103,36 @@ st.markdown("<h1 style='text-align: center; margin-bottom: 30px;'>🤖 Personal 
 
 # --- SIDEBAR CONTROL PANEL ---
 st.sidebar.header("⚙️ Configuration Panel")
-st.sidebar.caption("Refine the signal feed and adjust the model thresholds below.")
 
 data_source = st.sidebar.selectbox(
     "Data Source",
-    ["Yahoo Finance (yfinance)", "CSV File"],
-    help="Choose the market data source for the dashboard."
+    ["Yahoo Finance (yfinance)", "CSV File"]
 )
 
 if data_source == "Yahoo Finance (yfinance)":
-    st.sidebar.caption("Type any ticker or index symbol. Quick picks are available below.")
-    if "symbol_input" not in st.session_state:
-        st.session_state.symbol_input = "TCS.NS"
-
-    symbol = st.sidebar.text_input(
-        "Symbol",
-        value=st.session_state.symbol_input,
-        placeholder="TCS.NS",
-        help="Examples: RELIANCE.NS, TCS.NS, AAPL, ^NSEI"
-    ).strip() or "TCS.NS"
-    st.session_state.symbol_input = symbol.upper()
-
-    quick_symbols = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "^NSEI"]
-    button_cols = st.sidebar.columns(3)
-    for idx, quick_symbol in enumerate(quick_symbols):
-        if button_cols[idx % 3].button(quick_symbol, key=f"quick_{quick_symbol}", use_container_width=True):
-            st.session_state.symbol_input = quick_symbol
-            st.rerun()
-
-    data_key = st.session_state.symbol_input
+    # Popular defaults + custom text input option
+    preset_symbol = st.sidebar.selectbox(
+        "Select Ticker",
+        ["TCS.NS", "RELIANCE.NS", "AAPL", "MSFT", "GOOGL", "Custom"]
+    )
+    if preset_symbol == "Custom":
+        symbol = st.sidebar.text_input("Enter Custom Symbol (e.g., INFY.NS, TSLA)", "TSLA").upper().strip()
+    else:
+        symbol = preset_symbol
+    data_key = symbol
 else:
-    st.sidebar.caption("Load an existing CSV file from the project folder.")
+    # CSV file path input
     csv_path = st.sidebar.text_input("Enter CSV File Path", "TCS.csv")
     symbol = os.path.basename(csv_path)
     data_key = csv_path
 
-with st.sidebar.expander("Advanced settings", expanded=False):
-    st.caption("Fine-tune the signal threshold and risk rules.")
-    prob_threshold = st.slider("Signal Probability Threshold", 0.50, 0.70, 0.55, 0.01)
-    atr_stop_mult = st.slider("Stop-Loss ATR Multiplier", 1.0, 3.0, 1.5, 0.1)
-    atr_target_mult = st.slider("Profit Target ATR Multiplier", 1.0, 5.0, 2.0, 0.1)
-    cost_per_trade = st.number_input("Transaction Cost / Trade (Fraction)", 0.0, 0.01, 0.0006, 0.0001, format="%.5f")
+# Strategy parameters
+st.sidebar.markdown("---")
+st.sidebar.subheader("🎯 Strategy Parameters")
+prob_threshold = st.sidebar.slider("Signal Probability Threshold", 0.50, 0.70, 0.55, 0.01)
+atr_stop_mult = st.sidebar.slider("Stop-Loss ATR Multiplier", 1.0, 3.0, 1.5, 0.1)
+atr_target_mult = st.sidebar.slider("Profit Target ATR Multiplier", 1.0, 5.0, 2.0, 0.1)
+cost_per_trade = st.sidebar.number_input("Transaction Cost / Trade (Fraction)", 0.0, 0.01, 0.0006, 0.0001, format="%.5f")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(
@@ -157,14 +140,188 @@ st.sidebar.markdown(
     "Personal & family educational use only. Public signal sharing requires formal SEBI RA/IA registration."
 )
 
-# --- DATA PROCESSING ---
-df_raw = get_historical_data(data_source, data_key)
+# --- NIFTY 50 LIST ---
+NIFTY_50 = [
+    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", 
+    "SBIN.NS", "ITC.NS", "LT.NS", "HINDUNILVR.NS", "AXISBANK.NS", 
+    "KOTAKBANK.NS", "BHARTIARTL.NS", "BAJFINANCE.NS", "ASIANPAINT.NS", 
+    "MARUTI.NS", "TATAMOTORS.NS", "WIPRO.NS", "SUNPHARMA.NS", 
+    "TITAN.NS", "ULTRACEMCO.NS", "NESTLEIND.NS", "POWERGRID.NS", 
+    "NTPC.NS", "TATASTEEL.NS", "HCLTECH.NS", "TECHM.NS", "ADANIENT.NS", 
+    "ONGC.NS", "COALINDIA.NS", "JSWSTEEL.NS", "BAJAJFINSV.NS", 
+    "GRASIM.NS", "DRREDDY.NS", "CIPLA.NS", "BPCL.NS", "EICHERMOT.NS", 
+    "HEROMOTOCO.NS", "DIVISLAB.NS", "BRITANNIA.NS", "APOLLOHOSP.NS", 
+    "HINDALCO.NS", "TATACONSUM.NS", "INDUSINDBK.NS", "SBILIFE.NS", 
+    "HDFCLIFE.NS", "ADANIPORTS.NS", "UPL.NS", "LTIM.NS"
+]
+
+
+def scan_symbol(sym, p_thresh, stop_mult, target_mult):
+    """
+    Helper function to process a single symbol for the market scanner.
+    Catches all internal data/logic issues and reports them as skip reasons.
+    """
+    try:
+        # 1. Fetch data safely
+        df_sym = get_historical_data("Yahoo Finance (yfinance)", sym)
+        if df_sym is None or df_sym.empty:
+            return None, "No data returned (invalid symbol or offline)"
+            
+        # 2. Train model (or fetch cached version)
+        model_sym = get_trained_model(sym, df_sym)
+        if model_sym is None:
+            return None, "Model training failed (insufficient data)"
+            
+        # 3. Compute indicators
+        df_feat = features.compute_features(df_sym)
+        df_val = df_feat.dropna(subset=features.FEATURE_COLS)
+        if df_val.empty:
+            return None, "Feature warmup calculation failed"
+            
+        # 4. Generate prediction on the latest bar
+        latest_bar_sym = df_val.iloc[-1]
+        X_lat = latest_bar_sym[features.FEATURE_COLS].to_frame().T
+        prob_val = model_sym.predict_proba(X_lat)[0, 1]
+        
+        is_long_sym = prob_val >= p_thresh
+        close_val = latest_bar_sym['close']
+        atr_val = latest_bar_sym['atr_14']
+        
+        if is_long_sym:
+            entry = close_val
+            stop = entry - stop_mult * atr_val
+            tgt = entry + target_mult * atr_val
+            risk_rew = (tgt - entry) / (entry - stop) if (entry - stop) != 0 else 0.0
+            
+            return {
+                'Symbol': sym,
+                'Signal': 'LONG',
+                'Probability %': round(prob_val * 100, 2),
+                'Close': round(close_val, 2),
+                'Suggested Entry': f"{entry:.2f}",
+                'Stop-Loss': f"{stop:.2f}",
+                'Profit Target': f"{tgt:.2f}",
+                'Risk:Reward': f"{risk_rew:.2f}"
+            }, None
+        else:
+            return {
+                'Symbol': sym,
+                'Signal': 'WAIT',
+                'Probability %': round(prob_val * 100, 2),
+                'Close': round(close_val, 2),
+                'Suggested Entry': '-',
+                'Stop-Loss': '-',
+                'Profit Target': '-',
+                'Risk:Reward': '-'
+            }, None
+            
+    except Exception as e:
+        return None, f"Runtime error: {str(e)}"
+
+
+# --- MARKET SCANNER GRAPHICAL UI ---
+st.subheader("🔍 Nifty 50 Market Scanner")
+col_scan1, col_scan2 = st.columns([2, 8])
+with col_scan1:
+    scan_clicked = st.button("Scan Nifty 50 Market", type="primary", use_container_width=True)
+
+if scan_clicked:
+    progress_bar = st.progress(0.0)
+    status_text = st.empty()
+    
+    results = []
+    skipped = {}
+    
+    total_symbols = len(NIFTY_50)
+    
+    for idx, sym in enumerate(NIFTY_50):
+        status_text.text(f"Scanning {sym} ({idx+1}/{total_symbols})...")
+        res, err = scan_symbol(sym, prob_threshold, atr_stop_mult, atr_target_mult)
+        if res:
+            results.append(res)
+        if err:
+            skipped[sym] = err
+        progress_bar.progress((idx + 1) / total_symbols)
+        
+    status_text.text("✅ Scan completed successfully!")
+    progress_bar.empty()
+    
+    # Store results in Streamlit session state
+    st.session_state['scan_results'] = results
+    st.session_state['skipped_symbols'] = skipped
+    st.session_state['has_scanned'] = True
+
+# Display scan table if results are cached in session state
+if st.session_state.get('has_scanned', False):
+    results_list = st.session_state.get('scan_results', [])
+    skipped_dict = st.session_state.get('skipped_symbols', {})
+    
+    if results_list:
+        df_results = pd.DataFrame(results_list)
+        
+        # Display filtering controls
+        col_ctrl1, col_ctrl2 = st.columns([3, 7])
+        with col_ctrl1:
+            show_only_long = st.checkbox("Show only LONG signals", value=False)
+            
+        if show_only_long:
+            df_display = df_results[df_results['Signal'] == 'LONG'].copy()
+        else:
+            df_display = df_results.copy()
+            
+        # Default sort: Probability % descending
+        df_display = df_display.sort_values(by='Probability %', ascending=False)
+        
+        # Styler function to highlight LONG rows in green
+        def style_rows(row):
+            if row['Signal'] == 'LONG':
+                return ['background-color: #113824; color: #ffffff'] * len(row)
+            return [''] * len(row)
+            
+        styled_df = df_display.style.apply(style_rows, axis=1)
+        
+        st.markdown("**Nifty 50 Signal Scanner Results:**")
+        st.dataframe(
+            styled_df, 
+            use_container_width=True, 
+            height=350,
+            column_config={
+                "Symbol": st.column_config.TextColumn("Symbol"),
+                "Signal": st.column_config.TextColumn("Signal"),
+                "Probability %": st.column_config.NumberColumn("Probability %", format="%.2f%%"),
+                "Close": st.column_config.NumberColumn("Close", format="%.2f"),
+                "Suggested Entry": st.column_config.TextColumn("Suggested Entry"),
+                "Stop-Loss": st.column_config.TextColumn("Stop-Loss"),
+                "Profit Target": st.column_config.TextColumn("Profit Target"),
+                "Risk:Reward": st.column_config.TextColumn("Risk:Reward")
+            }
+        )
+    else:
+        st.info("No results were generated in the scan.")
+        
+    if skipped_dict:
+        with st.expander("⚠️ View Skipped Symbols"):
+            st.markdown("The following symbols were skipped (due to missing data or training errors):")
+            for sym, reason in skipped_dict.items():
+                st.write(f"- **{sym}**: {reason}")
+
+st.markdown("---")
+
+# --- DETAILED SINGLE SYMBOL VIEW ---
+st.subheader("🔎 Single-Symbol Detailed View & Backtest")
+
+# Fetch and wrap data loading in try/except (Rule 1)
+df_raw = None
+try:
+    df_raw = get_historical_data(data_source, data_key)
+except Exception as e:
+    st.error(f"Error fetching historical data: {e}")
 
 if df_raw is None or df_raw.empty:
     if data_source == "CSV File":
         st.error(f"Could not load data from path: '{data_key}'. Check if file exists in project folder.")
     else:
-        st.error(f"No data returned for ticker: '{symbol}' from yfinance.")
+        st.error(f"No data returned for ticker: '{symbol}' from yfinance. Skipping symbol.")
 else:
     # 1. Train Model
     model = get_trained_model(data_key, df_raw)
@@ -209,8 +366,7 @@ else:
                 target_str = "-"
             
             # --- MAIN AREA SECTION 1: SIGNAL KEYCARDS ---
-            st.subheader(f"📊 Current Signal Status for {symbol} (As of {latest_time})")
-            st.caption(f"Last updated: {latest_time}")
+            st.markdown(f"**Detailed Analysis for {symbol}** (As of {latest_time})")
             
             card_class = "signal-long" if is_long else "signal-wait"
             signal_text = "LONG 🟢" if is_long else "WAIT 🟡"
@@ -353,7 +509,6 @@ else:
             fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#2e323b')
             
             st.plotly_chart(fig, use_container_width=True)
-            st.caption("Daily data via Yahoo Finance (slightly delayed) — not real-time.")
             st.markdown("---")
             
             # --- MAIN AREA SECTION 3: BACKTEST COMPARISON ---
