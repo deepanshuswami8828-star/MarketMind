@@ -98,6 +98,53 @@ def get_trained_model(model_key, _df):
     return strategy.train_model(dataset)
 
 
+def explain_signal_logic(row_data):
+    """
+    Generates a plain-language textual explanation for a signal based on technical indicators.
+    """
+    rsi = row_data['rsi_14']
+    close = row_data['close']
+    sma_10 = row_data['sma_10']
+    sma_20 = row_data['sma_20']
+    macd_hist = row_data['macd_hist']
+    
+    # RSI interpretation
+    if rsi <= 30:
+        rsi_desc = f"Oversold ({rsi:.2f})"
+        rsi_interp = "indicating the asset is potentially undervalued and due for a bounce."
+    elif rsi >= 70:
+        rsi_desc = f"Overbought ({rsi:.2f})"
+        rsi_interp = "indicating the asset is potentially overvalued and overextended."
+    else:
+        rsi_desc = f"Neutral ({rsi:.2f})"
+        rsi_interp = "indicating steady, non-extreme price action."
+        
+    # Price vs SMA20
+    price_rel = "above" if close > sma_20 else "below"
+    price_trend = "uptrend" if close > sma_20 else "downtrend"
+    price_interp = f"The price is {price_rel} its 20-day simple moving average ({sma_20:.2f}), suggesting a short-term {price_trend}."
+    
+    # MACD Histogram
+    macd_rel = "positive" if macd_hist > 0 else "negative"
+    macd_trend = "upward momentum" if macd_hist > 0 else "downward momentum"
+    macd_interp = f"The MACD histogram is {macd_rel} ({macd_hist:.4f}), indicating active {macd_trend}."
+    
+    # Trend (SMA10 vs SMA20)
+    trend_rel = "bullish" if sma_10 > sma_20 else "bearish"
+    trend_desc = "bullish alignment (SMA10 > SMA20)" if sma_10 > sma_20 else "bearish alignment (SMA10 < SMA20)"
+    trend_interp = f"The moving averages show a {trend_desc}, showing a {trend_rel} trend structure."
+    
+    explanation = f"""
+    * **RSI(14)**: {rsi_desc} — {rsi_interp}
+    * **Price vs SMA20**: {price_interp}
+    * **MACD Histogram**: {macd_interp}
+    * **Trend (SMA10 vs SMA20)**: {trend_interp}
+    
+    💡 *Note*: This is an ML model combining these indicators (RSI, MACD, moving-average trend, momentum, volatility, volume). It is not a single classic strategy.
+    """
+    return explanation
+
+
 # --- DASHBOARD HEADER ---
 st.markdown("<h1 style='text-align: center; margin-bottom: 30px;'>🤖 Personal Stock Trading Signal Dashboard</h1>", unsafe_allow_html=True)
 
@@ -110,15 +157,13 @@ data_source = st.sidebar.selectbox(
 )
 
 if data_source == "Yahoo Finance (yfinance)":
-    # Popular defaults + custom text input option
-    preset_symbol = st.sidebar.selectbox(
-        "Select Ticker",
-        ["TCS.NS", "RELIANCE.NS", "AAPL", "MSFT", "GOOGL", "Custom"]
-    )
-    if preset_symbol == "Custom":
-        symbol = st.sidebar.text_input("Enter Custom Symbol (e.g., INFY.NS, TSLA)", "TSLA").upper().strip()
-    else:
-        symbol = preset_symbol
+    # Text input accepting any symbol
+    symbol = st.sidebar.text_input(
+        "Enter Symbol",
+        value="TCS.NS",
+        help="Type any symbol, e.g. RELIANCE.NS, SBIN.NS, AAPL."
+    ).upper().strip()
+    st.sidebar.markdown("<small style='color: #8a99ad;'>Type any symbol, e.g. RELIANCE.NS, SBIN.NS, AAPL.</small>", unsafe_allow_html=True)
     data_key = symbol
 else:
     # CSV file path input
@@ -140,8 +185,9 @@ st.sidebar.markdown(
     "Personal & family educational use only. Public signal sharing requires formal SEBI RA/IA registration."
 )
 
-# --- NIFTY 50 LIST ---
-NIFTY_50 = [
+# --- NIFTY 100 LIST (Nifty 50 + Nifty Next 50) ---
+NIFTY_100 = [
+    # Nifty 50 (48 symbols)
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", 
     "SBIN.NS", "ITC.NS", "LT.NS", "HINDUNILVR.NS", "AXISBANK.NS", 
     "KOTAKBANK.NS", "BHARTIARTL.NS", "BAJFINANCE.NS", "ASIANPAINT.NS", 
@@ -152,7 +198,19 @@ NIFTY_50 = [
     "GRASIM.NS", "DRREDDY.NS", "CIPLA.NS", "BPCL.NS", "EICHERMOT.NS", 
     "HEROMOTOCO.NS", "DIVISLAB.NS", "BRITANNIA.NS", "APOLLOHOSP.NS", 
     "HINDALCO.NS", "TATACONSUM.NS", "INDUSINDBK.NS", "SBILIFE.NS", 
-    "HDFCLIFE.NS", "ADANIPORTS.NS", "UPL.NS", "LTIM.NS"
+    "HDFCLIFE.NS", "ADANIPORTS.NS", "UPL.NS", "LTIM.NS",
+    # Nifty Next 50 (52 symbols)
+    "ACC.NS", "ADANIENSOL.NS", "ADANIGREEN.NS", "ADANIPOWER.NS", "AMBUJACEM.NS", 
+    "BEL.NS", "BANKBARODA.NS", "BHEL.NS", "BOSCHLTD.NS", "CANBK.NS", 
+    "CGPOWER.NS", "CHOLAFIN.NS", "COLPAL.NS", "DLF.NS", "FEDBANK.NS", 
+    "GAIL.NS", "GMRINFRA.NS", "GODREJCP.NS", "HAL.NS", "HAVELLS.NS", 
+    "ICICIGI.NS", "ICICIPRULI.NS", "IOC.NS", "IRCTC.NS", "IRFC.NS", 
+    "INDIGO.NS", "JINDALSTEL.NS", "JIOFIN.NS", "LICI.NS", "MRF.NS", 
+    "MAXHEALTH.NS", "MPHASIS.NS", "NHPC.NS", "NMDC.NS", "OBEROIRLTY.NS", 
+    "OFSS.NS", "PIDILITIND.NS", "PFC.NS", "PNB.NS", "RECLTD.NS", 
+    "SAIL.NS", "SIEMENS.NS", "SRF.NS", "TATACOMM.NS", "TATAPOWER.NS", 
+    "TRENT.NS", "TVSMOTOR.NS", "UNIONBANK.NS", "VBL.NS", "ZOMATO.NS", 
+    "ZYDUSLIFE.NS", "MUTHOOTFIN.NS"
 ]
 
 
@@ -201,7 +259,13 @@ def scan_symbol(sym, p_thresh, stop_mult, target_mult):
                 'Suggested Entry': f"{entry:.2f}",
                 'Stop-Loss': f"{stop:.2f}",
                 'Profit Target': f"{tgt:.2f}",
-                'Risk:Reward': f"{risk_rew:.2f}"
+                'Risk:Reward': f"{risk_rew:.2f}",
+                # Stored raw metrics for explanation expander
+                'rsi_14': float(latest_bar_sym['rsi_14']),
+                'sma_10': float(latest_bar_sym['sma_10']),
+                'sma_20': float(latest_bar_sym['sma_20']),
+                'macd_hist': float(latest_bar_sym['macd_hist']),
+                'close_raw': float(close_val)
             }, None
         else:
             return {
@@ -212,7 +276,12 @@ def scan_symbol(sym, p_thresh, stop_mult, target_mult):
                 'Suggested Entry': '-',
                 'Stop-Loss': '-',
                 'Profit Target': '-',
-                'Risk:Reward': '-'
+                'Risk:Reward': '-',
+                'rsi_14': float(latest_bar_sym['rsi_14']),
+                'sma_10': float(latest_bar_sym['sma_10']),
+                'sma_20': float(latest_bar_sym['sma_20']),
+                'macd_hist': float(latest_bar_sym['macd_hist']),
+                'close_raw': float(close_val)
             }, None
             
     except Exception as e:
@@ -220,10 +289,10 @@ def scan_symbol(sym, p_thresh, stop_mult, target_mult):
 
 
 # --- MARKET SCANNER GRAPHICAL UI ---
-st.subheader("🔍 Nifty 50 Market Scanner")
+st.subheader("🔍 Nifty 100 Market Scanner")
 col_scan1, col_scan2 = st.columns([2, 8])
 with col_scan1:
-    scan_clicked = st.button("Scan Nifty 50 Market", type="primary", use_container_width=True)
+    scan_clicked = st.button("Scan Nifty 100 Market", type="primary", use_container_width=True)
 
 if scan_clicked:
     progress_bar = st.progress(0.0)
@@ -232,9 +301,9 @@ if scan_clicked:
     results = []
     skipped = {}
     
-    total_symbols = len(NIFTY_50)
+    total_symbols = len(NIFTY_100)
     
-    for idx, sym in enumerate(NIFTY_50):
+    for idx, sym in enumerate(NIFTY_100):
         status_text.text(f"Scanning {sym} ({idx+1}/{total_symbols})...")
         res, err = scan_symbol(sym, prob_threshold, atr_stop_mult, atr_target_mult)
         if res:
@@ -278,9 +347,14 @@ if st.session_state.get('has_scanned', False):
                 return ['background-color: #113824; color: #ffffff'] * len(row)
             return [''] * len(row)
             
-        styled_df = df_display.style.apply(style_rows, axis=1)
+        # Select columns to display in the table (omit raw metrics used for explanation)
+        display_cols = [
+            'Symbol', 'Signal', 'Probability %', 'Close', 
+            'Suggested Entry', 'Stop-Loss', 'Profit Target', 'Risk:Reward'
+        ]
+        styled_df = df_display[display_cols].style.apply(style_rows, axis=1)
         
-        st.markdown("**Nifty 50 Signal Scanner Results:**")
+        st.markdown("**Nifty 100 Signal Scanner Results:**")
         st.dataframe(
             styled_df, 
             use_container_width=True, 
@@ -296,6 +370,22 @@ if st.session_state.get('has_scanned', False):
                 "Risk:Reward": st.column_config.TextColumn("Risk:Reward")
             }
         )
+        
+        # Explain LONG signals expanders
+        long_results = [r for r in results_list if r['Signal'] == 'LONG']
+        if long_results:
+            st.markdown("### 💡 Scan Signal Interpretations (Why LONG?)")
+            for r in long_results:
+                bar_data = {
+                    'rsi_14': r['rsi_14'],
+                    'close': r['close_raw'],
+                    'sma_10': r['sma_10'],
+                    'sma_20': r['sma_20'],
+                    'macd_hist': r['macd_hist']
+                }
+                with st.expander(f"Why is {r['Symbol']} LONG?"):
+                    explanation = explain_signal_logic(bar_data)
+                    st.markdown(explanation)
     else:
         st.info("No results were generated in the scan.")
         
@@ -321,7 +411,7 @@ if df_raw is None or df_raw.empty:
     if data_source == "CSV File":
         st.error(f"Could not load data from path: '{data_key}'. Check if file exists in project folder.")
     else:
-        st.error(f"No data returned for ticker: '{symbol}' from yfinance. Skipping symbol.")
+        st.warning("⚠️ No data, try another symbol.")
 else:
     # 1. Train Model
     model = get_trained_model(data_key, df_raw)
@@ -414,6 +504,19 @@ else:
                 """, unsafe_allow_html=True)
             
             st.markdown(f"**Model Long Probability**: `{prob * 100:.2f}%` (Signal triggers at `{prob_threshold * 100:.1f}%`) | **ATR (14)**: `{current_atr:.4f}`")
+            
+            # Expandable "Why this signal?" section for the single symbol view
+            current_bar_data = {
+                'rsi_14': float(latest_bar['rsi_14']),
+                'close': float(current_close),
+                'sma_10': float(latest_bar['sma_10']),
+                'sma_20': float(latest_bar['sma_20']),
+                'macd_hist': float(latest_bar['macd_hist'])
+            }
+            with st.expander("❓ Why this signal?"):
+                explanation = explain_signal_logic(current_bar_data)
+                st.markdown(explanation)
+                
             st.markdown("---")
             
             # --- MAIN AREA SECTION 2: INTERACTIVE CHART (PLOTLY) ---
