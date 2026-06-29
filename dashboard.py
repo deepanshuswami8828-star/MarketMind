@@ -26,37 +26,51 @@ st.set_page_config(
 # Sleek CSS styling to inject custom visual accents
 st.markdown("""
 <style>
+    .stApp {
+        background: #0f172a;
+    }
     .reportview-container {
-        background: #0e1117;
+        background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
     }
     .metric-card {
-        border-radius: 12px;
-        padding: 20px;
-        background-color: #1e222b;
-        border: 1px solid #2e323b;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border-radius: 14px;
+        padding: 18px 16px;
+        background-color: #111827;
+        border: 1px solid #334155;
+        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.25);
         text-align: center;
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
     .metric-card h3 {
-        margin: 0;
-        font-size: 14px;
-        color: #8a99ad;
+        margin: 0 0 8px 0;
+        font-size: 12px;
+        color: #94a3b8;
         text-transform: uppercase;
         letter-spacing: 1px;
     }
     .metric-card p {
-        margin: 10px 0 0 0;
-        font-size: 28px;
+        margin: 0;
+        font-size: 24px;
         font-weight: 700;
-        color: #ffffff;
+        color: #f8fafc;
     }
     .signal-long {
-        background: linear-gradient(135deg, #113824 0%, #1e222b 100%);
-        border: 1.5px solid #28a745 !important;
+        background-color: #11251c;
+        border: 1.5px solid #22c55e !important;
     }
     .signal-wait {
-        background: linear-gradient(135deg, #3d331d 0%, #1e222b 100%);
-        border: 1.5px solid #ffc107 !important;
+        background-color: #241c0d;
+        border: 1.5px solid #f59e0b !important;
+    }
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    .stSidebar .block-container {
+        padding-top: 1.25rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -95,36 +109,47 @@ st.markdown("<h1 style='text-align: center; margin-bottom: 30px;'>🤖 Personal 
 
 # --- SIDEBAR CONTROL PANEL ---
 st.sidebar.header("⚙️ Configuration Panel")
+st.sidebar.caption("Refine the signal feed and adjust the model thresholds below.")
 
 data_source = st.sidebar.selectbox(
     "Data Source",
-    ["Yahoo Finance (yfinance)", "CSV File"]
+    ["Yahoo Finance (yfinance)", "CSV File"],
+    help="Choose the market data source for the dashboard."
 )
 
 if data_source == "Yahoo Finance (yfinance)":
-    # Popular defaults + custom text input option
-    preset_symbol = st.sidebar.selectbox(
-        "Select Ticker",
-        ["TCS.NS", "RELIANCE.NS", "AAPL", "MSFT", "GOOGL", "Custom"]
-    )
-    if preset_symbol == "Custom":
-        symbol = st.sidebar.text_input("Enter Custom Symbol (e.g., INFY.NS, TSLA)", "TSLA").upper().strip()
-    else:
-        symbol = preset_symbol
-    data_key = symbol
+    st.sidebar.caption("Type any ticker or index symbol. Quick picks are available below.")
+    if "symbol_input" not in st.session_state:
+        st.session_state.symbol_input = "TCS.NS"
+
+    symbol = st.sidebar.text_input(
+        "Symbol",
+        value=st.session_state.symbol_input,
+        placeholder="TCS.NS",
+        help="Examples: RELIANCE.NS, TCS.NS, AAPL, ^NSEI"
+    ).strip() or "TCS.NS"
+    st.session_state.symbol_input = symbol.upper()
+
+    quick_symbols = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "^NSEI"]
+    button_cols = st.sidebar.columns(3)
+    for idx, quick_symbol in enumerate(quick_symbols):
+        if button_cols[idx % 3].button(quick_symbol, key=f"quick_{quick_symbol}", use_container_width=True):
+            st.session_state.symbol_input = quick_symbol
+            st.rerun()
+
+    data_key = st.session_state.symbol_input
 else:
-    # CSV file path input
+    st.sidebar.caption("Load an existing CSV file from the project folder.")
     csv_path = st.sidebar.text_input("Enter CSV File Path", "TCS.csv")
     symbol = os.path.basename(csv_path)
     data_key = csv_path
 
-# Strategy parameters
-st.sidebar.markdown("---")
-st.sidebar.subheader("🎯 Strategy Parameters")
-prob_threshold = st.sidebar.slider("Signal Probability Threshold", 0.50, 0.70, 0.55, 0.01)
-atr_stop_mult = st.sidebar.slider("Stop-Loss ATR Multiplier", 1.0, 3.0, 1.5, 0.1)
-atr_target_mult = st.sidebar.slider("Profit Target ATR Multiplier", 1.0, 5.0, 2.0, 0.1)
-cost_per_trade = st.sidebar.number_input("Transaction Cost / Trade (Fraction)", 0.0, 0.01, 0.0006, 0.0001, format="%.5f")
+with st.sidebar.expander("Advanced settings", expanded=False):
+    st.caption("Fine-tune the signal threshold and risk rules.")
+    prob_threshold = st.slider("Signal Probability Threshold", 0.50, 0.70, 0.55, 0.01)
+    atr_stop_mult = st.slider("Stop-Loss ATR Multiplier", 1.0, 3.0, 1.5, 0.1)
+    atr_target_mult = st.slider("Profit Target ATR Multiplier", 1.0, 5.0, 2.0, 0.1)
+    cost_per_trade = st.number_input("Transaction Cost / Trade (Fraction)", 0.0, 0.01, 0.0006, 0.0001, format="%.5f")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(
@@ -185,6 +210,7 @@ else:
             
             # --- MAIN AREA SECTION 1: SIGNAL KEYCARDS ---
             st.subheader(f"📊 Current Signal Status for {symbol} (As of {latest_time})")
+            st.caption(f"Last updated: {latest_time}")
             
             card_class = "signal-long" if is_long else "signal-wait"
             signal_text = "LONG 🟢" if is_long else "WAIT 🟡"
@@ -327,6 +353,7 @@ else:
             fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#2e323b')
             
             st.plotly_chart(fig, use_container_width=True)
+            st.caption("Daily data via Yahoo Finance (slightly delayed) — not real-time.")
             st.markdown("---")
             
             # --- MAIN AREA SECTION 3: BACKTEST COMPARISON ---
